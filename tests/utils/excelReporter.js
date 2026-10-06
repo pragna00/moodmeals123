@@ -191,8 +191,16 @@ async function generateExcelReport(appiumResults, seleniumResults, loadResults, 
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  await workbook.xlsx.writeFile(outputPath);
-  console.log(`[Excel Reporter] Excel Analysis Report created successfully at: ${outputPath}`);
+  try {
+    await workbook.xlsx.writeFile(outputPath);
+    console.log(`[Excel Reporter] Excel Analysis Report created successfully at: ${outputPath}`);
+  } catch (err) {
+    if (err.code === 'EBUSY') {
+      console.warn(`[Excel Reporter] Warning: File '${path.basename(outputPath)}' is currently open in an editor or viewer. Skipped overwriting this file.`);
+    } else {
+      throw err;
+    }
+  }
 }
 
 module.exports = { generateExcelReport };
