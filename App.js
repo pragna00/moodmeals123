@@ -1092,16 +1092,6 @@ export default function App() {
             <TouchableOpacity style={styles.primaryBtn} onPress={handleAuthSubmit}>
               <Text style={styles.primaryBtnText}>{authMode === 'login' ? 'Log In to Database ➔' : 'Create Account in Database ➔'}</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={{ marginTop: 16, alignItems: 'center' }}
-              onPress={() => {
-                setEmailInput('sai@gmail.com');
-                setPasswordInput('password123');
-              }}
-            >
-              <Text style={{ color: '#0EA5E9', fontSize: 12, fontWeight: '600' }}>⚡ Autofill Demo Account (sai@gmail.com)</Text>
-            </TouchableOpacity>
           </View>
         </ScrollView>
       </SafeAreaView>
