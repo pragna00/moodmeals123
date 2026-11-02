@@ -14,6 +14,20 @@ import {
   Modal
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  registerWithFirebase,
+  loginWithFirebase,
+  logoutFromFirebase,
+  subscribeToAuth,
+  saveMoodToFirestore,
+  listenToMoodHistory,
+  saveWaterToFirestore,
+  listenToWater,
+  saveFavoritesToFirestore,
+  listenToFavorites,
+  saveSettingsToFirestore,
+  listenToSettings
+} from './services/firebase';
 
 
 
@@ -719,6 +733,18 @@ export default function App() {
   const [baseUrl, setBaseUrl] = useState('http://10.0.2.2:5000/');
   const [selectedEmotion, setSelectedEmotion] = useState('Sad');
   const [intensity, setIntensity] = useState(85);
+
+  const handleSelectEmotion = (emotionName) => {
+    setSelectedEmotion(emotionName);
+    if (currentUser?.uid) {
+      saveMoodToFirestore(currentUser.uid, {
+        emotion: emotionName,
+        emoji: EMOTION_EMOJIS[emotionName] || '😊',
+        intensity: intensity,
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [favorites, setFavorites] = useState(['1', '3']);
@@ -738,7 +764,53 @@ export default function App() {
 
   useEffect(() => {
     checkSessionAndSeedDb();
+
+    // Listen to Firebase live authentication state
+    const unsubscribeAuth = subscribeToAuth((fbUser) => {
+      if (fbUser) {
+        setCurrentUser({ email: fbUser.email, uid: fbUser.uid });
+        setIsLoggedIn(true);
+      }
+    });
+
+    return () => {
+      if (unsubscribeAuth) unsubscribeAuth();
+    };
   }, []);
+
+  // Real-time bidirectional data synchronization with Firebase Cloud Firestore
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+
+    // 1. Sync Favorites from Firestore in real-time
+    const unsubFavs = listenToFavorites(currentUser.uid, (firestoreFavs) => {
+      if (Array.isArray(firestoreFavs) && firestoreFavs.length > 0) {
+        setFavorites(firestoreFavs);
+      }
+    });
+
+    // 2. Sync Water & Reminders from Firestore in real-time
+    const unsubWater = listenToWater(currentUser.uid, (data) => {
+      if (data) {
+        if (typeof data.waterIntake === 'number') setWaterIntake(data.waterIntake);
+        if (data.reminderFreq) setReminderFreq(data.reminderFreq);
+        if (typeof data.reminderActive === 'boolean') setReminderActive(data.reminderActive);
+      }
+    });
+
+    // 3. Sync User Settings (Theme, etc.) from Firestore in real-time
+    const unsubSettings = listenToSettings(currentUser.uid, (settings) => {
+      if (settings && typeof settings.darkMode === 'boolean') {
+        setDarkMode(settings.darkMode);
+      }
+    });
+
+    return () => {
+      if (unsubFavs) unsubFavs();
+      if (unsubWater) unsubWater();
+      if (unsubSettings) unsubSettings();
+    };
+  }, [currentUser?.uid]);
 
   // Automated Water Hydration Reminder Hook
   useEffect(() => {
@@ -756,14 +828,21 @@ export default function App() {
         "💧 Water Hydration Reminder!",
         `It's time for your ${reminderFreq} water break! Drink 1 glass of water (250 ml) to stay hydrated and refreshed.`,
         [
-          { text: "Drink +250ml 🥛", onPress: () => setWaterIntake(w => w + 250) },
+          { text: "Drink +250ml 🥛", onPress: () => {
+              setWaterIntake(w => {
+                const updated = w + 250;
+                if (currentUser?.uid) saveWaterToFirestore(currentUser.uid, { waterIntake: updated, reminderFreq, reminderActive });
+                return updated;
+              });
+            }
+          },
           { text: "Dismiss", style: "cancel" }
         ]
       );
     }, intervalMs);
 
     return () => clearInterval(interval);
-  }, [reminderActive, reminderFreq]);
+  }, [reminderActive, reminderFreq, currentUser?.uid]);
 
   const checkSessionAndSeedDb = async () => {
     try {
@@ -810,10 +889,31 @@ export default function App() {
     }
 
     try {
-      const usersStr = await AsyncStorage.getItem('MOODMEALS_USERS_DB');
-      const users = usersStr ? JSON.parse(usersStr) : [];
-
       if (authMode === 'signup') {
+        // 1. Try Firebase Authentication first
+        try {
+          const user = await registerWithFirebase(cleanEmail, cleanPassword);
+          setCurrentUser({ email: user.email, uid: user.uid });
+          setIsLoggedIn(true);
+          await AsyncStorage.setItem('MOODMEALS_SESSION', JSON.stringify({ email: cleanEmail, uid: user.uid }));
+          setEmailInput('');
+          setPasswordInput('');
+          return;
+        } catch (fbErr) {
+          console.warn('[Firebase Auth Register]:', fbErr.message);
+          if (fbErr.code === 'auth/email-already-in-use') {
+            setAuthError('Account with this Email ID already exists in Firebase! Please Log In.');
+            return;
+          } else if (fbErr.code === 'auth/weak-password') {
+            setAuthError('Firebase requires a password with at least 6 characters.');
+            return;
+          }
+          // If Firebase config missing or network error, fallback to local storage
+        }
+
+        // Fallback local storage
+        const usersStr = await AsyncStorage.getItem('MOODMEALS_USERS_DB');
+        const users = usersStr ? JSON.parse(usersStr) : [];
         const existingUser = users.find(u => u.email === cleanEmail);
         if (existingUser) {
           setAuthError('Account with this Email ID already exists! Please Log In.');
@@ -830,6 +930,30 @@ export default function App() {
         setEmailInput('');
         setPasswordInput('');
       } else {
+        // 1. Try Firebase Authentication first
+        try {
+          const user = await loginWithFirebase(cleanEmail, cleanPassword);
+          setCurrentUser({ email: user.email, uid: user.uid });
+          setIsLoggedIn(true);
+          await AsyncStorage.setItem('MOODMEALS_SESSION', JSON.stringify({ email: cleanEmail, uid: user.uid }));
+          setEmailInput('');
+          setPasswordInput('');
+          return;
+        } catch (fbErr) {
+          console.warn('[Firebase Auth Login]:', fbErr.message);
+          if (fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/invalid-credential') {
+            setAuthError('Invalid credentials or no account in Firebase. Please check details.');
+            return;
+          } else if (fbErr.code === 'auth/wrong-password') {
+            setAuthError('Incorrect Password in Firebase!');
+            return;
+          }
+          // If Firebase config missing or network error, fallback to local storage
+        }
+
+        // Fallback local storage
+        const usersStr = await AsyncStorage.getItem('MOODMEALS_USERS_DB');
+        const users = usersStr ? JSON.parse(usersStr) : [];
         const targetUser = users.find(u => u.email === cleanEmail);
         if (!targetUser) {
           setAuthError('No account found with this Email ID. Please Sign Up first!');
@@ -854,6 +978,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      await logoutFromFirebase();
       await AsyncStorage.removeItem('MOODMEALS_SESSION');
       setCurrentUser(null);
       setIsLoggedIn(false);
@@ -865,7 +990,13 @@ export default function App() {
   };
 
   const toggleFav = (id) => {
-    setFavorites(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setFavorites(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      if (currentUser?.uid) {
+        saveFavoritesToFirestore(currentUser.uid, next);
+      }
+      return next;
+    });
   };
 
   const handleSendChat = (textToSend) => {
@@ -1082,7 +1213,7 @@ export default function App() {
                 return (
                   <TouchableOpacity
                     key={item.name}
-                    onPress={() => setSelectedEmotion(item.name)}
+                    onPress={() => handleSelectEmotion(item.name)}
                     style={[styles.emotionCard, { backgroundColor: isSelected ? '#E6F4EA' : themeCard, borderColor: isSelected ? '#10B981' : 'transparent' }]}
                   >
                     <Text style={{ fontSize: 32 }}>{item.emoji}</Text>
@@ -1394,19 +1525,42 @@ export default function App() {
                     <Text style={{ color: '#0EA5E9', fontSize: 11 }}>Daily Intake: 2,500 / 2,500 ml</Text>
                   </View>
                 </View>
-                <Switch value={reminderActive} onValueChange={setReminderActive} trackColor={{ true: '#0EA5E9' }} />
+                <Switch
+                  value={reminderActive}
+                  onValueChange={(val) => {
+                    setReminderActive(val);
+                    if (currentUser?.uid) saveWaterToFirestore(currentUser.uid, { reminderActive: val, reminderFreq, waterIntake });
+                  }}
+                  trackColor={{ true: '#0EA5E9' }}
+                />
               </View>
 
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
                 {['Every 30m', 'Every 1h', 'Every 2h', 'Every 3h'].map(f => (
-                  <TouchableOpacity key={f} onPress={() => setReminderFreq(f)} style={[styles.freqChip, reminderFreq === f && { backgroundColor: '#0EA5E9' }]}>
+                  <TouchableOpacity
+                    key={f}
+                    onPress={() => {
+                      setReminderFreq(f);
+                      if (currentUser?.uid) saveWaterToFirestore(currentUser.uid, { reminderFreq: f, reminderActive, waterIntake });
+                    }}
+                    style={[styles.freqChip, reminderFreq === f && { backgroundColor: '#0EA5E9' }]}
+                  >
                     <Text style={{ color: reminderFreq === f ? '#fff' : '#000', fontSize: 11, fontWeight: '600' }}>{f}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
               <View style={{ flexDirection: 'row', gap: 6, marginTop: 12 }}>
-                <TouchableOpacity onPress={() => setWaterIntake(w => w + 260)} style={styles.blueBtn}><Text style={{ color: '#fff', fontSize: 11 }}>+260ml Drink Water 💧</Text></TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    const newWater = waterIntake + 260;
+                    setWaterIntake(newWater);
+                    if (currentUser?.uid) saveWaterToFirestore(currentUser.uid, { waterIntake: newWater, reminderFreq, reminderActive });
+                  }}
+                  style={styles.blueBtn}
+                >
+                  <Text style={{ color: '#fff', fontSize: 11 }}>+260ml Drink Water 💧</Text>
+                </TouchableOpacity>
                 <TouchableOpacity onPress={() => Alert.alert("🔔 Reminder Test", "Drink a glass of water now!")} style={styles.outlineBlueBtn}><Text style={{ color: '#0EA5E9', fontSize: 11 }}>🔔 Test Reminder</Text></TouchableOpacity>
               </View>
             </View>
@@ -1414,7 +1568,14 @@ export default function App() {
             {/* Dark Mode Switch */}
             <View style={[styles.userCard, { backgroundColor: themeCard, marginTop: 12 }]}>
               <Text style={{ fontWeight: '700', color: themeText, fontSize: 14 }}>Dark Theme Mode</Text>
-              <Switch value={darkMode} onValueChange={setDarkMode} trackColor={{ true: '#10B981' }} />
+              <Switch
+                value={darkMode}
+                onValueChange={(val) => {
+                  setDarkMode(val);
+                  if (currentUser?.uid) saveSettingsToFirestore(currentUser.uid, { darkMode: val });
+                }}
+                trackColor={{ true: '#10B981' }}
+              />
             </View>
 
             {/* Logout Button */}
