@@ -22,12 +22,12 @@ import {
 // Firebase configuration for project: mood-meals-bf07a
 // https://console.firebase.google.com/project/mood-meals-bf07a/
 export const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSy_YOUR_WEB_API_KEY_HERE",
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyB9DxT25GBN0bJqvfg4h61LbxCxSDIq-ps",
   authDomain: "mood-meals-bf07a.firebaseapp.com",
   projectId: "mood-meals-bf07a",
   storageBucket: "mood-meals-bf07a.firebasestorage.app",
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "YOUR_MESSAGING_SENDER_ID",
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "YOUR_WEB_APP_ID"
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "102873111000",
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "1:102873111000:web:moodmeals"
 };
 
 let app;
@@ -262,3 +262,4 @@ export function listenToSettings(userId, callback) {
     return () => {};
   }
 }
+

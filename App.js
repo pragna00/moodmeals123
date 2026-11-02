@@ -907,8 +907,13 @@ export default function App() {
           } else if (fbErr.code === 'auth/weak-password') {
             setAuthError('Firebase requires a password with at least 6 characters.');
             return;
+          } else if (fbErr.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.' || fbErr.code === 'auth/invalid-api-key' || (fbErr.message && fbErr.message.includes('API key'))) {
+            setAuthError('Firebase Error: Real Web API Key missing in .env! Please provide the Web API Key from Firebase Console.');
+            return;
+          } else {
+            setAuthError(`Firebase Registration Error: ${fbErr.message}`);
+            return;
           }
-          // If Firebase config missing or network error, fallback to local storage
         }
 
         // Fallback local storage
@@ -947,8 +952,13 @@ export default function App() {
           } else if (fbErr.code === 'auth/wrong-password') {
             setAuthError('Incorrect Password in Firebase!');
             return;
+          } else if (fbErr.code === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.' || fbErr.code === 'auth/invalid-api-key' || (fbErr.message && fbErr.message.includes('API key'))) {
+            setAuthError('Firebase Error: Real Web API Key missing in .env! Please provide the Web API Key from Firebase Console.');
+            return;
+          } else {
+            setAuthError(`Firebase Login Error: ${fbErr.message}`);
+            return;
           }
-          // If Firebase config missing or network error, fallback to local storage
         }
 
         // Fallback local storage
