@@ -879,12 +879,12 @@ export default function App() {
       setAuthError('Please enter your Email ID.');
       return;
     }
-    if (!cleanEmail.includes('@') && !cleanEmail.includes('.')) {
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
       setAuthError('Please enter a valid Email ID (e.g. user@domain.com).');
       return;
     }
-    if (!cleanPassword || cleanPassword.length < 4) {
-      setAuthError('Password must be at least 4 characters.');
+    if (!cleanPassword || cleanPassword.length < 6) {
+      setAuthError('Password must be at least 6 characters for Firebase.');
       return;
     }
 
@@ -1071,7 +1071,7 @@ export default function App() {
             <Text style={{ fontWeight: '700', color: themeText, marginBottom: 6 }}>Email ID</Text>
             <TextInput
               style={[styles.searchInput, { backgroundColor: themeBg, color: themeText, marginBottom: 14 }]}
-              placeholder="e.g. user@gmail.com or sai@1983"
+              placeholder="e.g. user@gmail.com"
               placeholderTextColor={themeSubtext}
               keyboardType="email-address"
               autoCapitalize="none"
@@ -1096,11 +1096,11 @@ export default function App() {
             <TouchableOpacity
               style={{ marginTop: 16, alignItems: 'center' }}
               onPress={() => {
-                setEmailInput('sai@1983');
+                setEmailInput('sai@gmail.com');
                 setPasswordInput('password123');
               }}
             >
-              <Text style={{ color: '#0EA5E9', fontSize: 12, fontWeight: '600' }}>⚡ Autofill Demo Account (sai@1983)</Text>
+              <Text style={{ color: '#0EA5E9', fontSize: 12, fontWeight: '600' }}>⚡ Autofill Demo Account (sai@gmail.com)</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
